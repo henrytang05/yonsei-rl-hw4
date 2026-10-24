@@ -252,14 +252,20 @@ In this section, you need to implement the REINFORCE policy gradient estimator i
   python cas4160/scripts/run_hw4.py -cfg experiments/sac/sanity_invertedpendulum_reinforce.yaml
 \end{lstlisting}
 
-\textbf{Answer:} 
+\textbf{Answer:}
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{assets/black.jpg}
-    \caption{\textbf{\color{red}Replace this with your plot, and add the caption.}}
+    \includegraphics[width=0.7\textwidth]{assets/invpendulum_reinforce.png}
+    \caption{Eval average return on InvertedPendulum-v4 using REINFORCE over 300K environment steps.}
 \end{figure}
 
-    {\textbf{\color{red}Add your explanation.}}
+    The agent successfully solves InvertedPendulum-v4, reaching the maximum reward of 1000 multiple times (first at step 50K). The results are \textbf{noisy and highly variable} — this is expected with REINFORCE because:
+    \begin{itemize}
+        \item REINFORCE is a high-variance estimator; even with correct actions, the gradient signal fluctuates.
+        \item With only 1 actor sample (\texttt{num\_actor\_samples=1}), variance is highest.
+        \item The policy occasionally "forgets" good behaviors during training, causing sudden drops in return.
+    \end{itemize}
+    Despite the noise, the agent demonstrates it can solve the task, confirming the REINFORCE implementation is correct.
 
     \item Train an agent on \verb|HalfCheetah-v4| using the provided config (\verb|halfcheetah_reinforce1.yaml|). Note that this configuration uses only one sampled action for estimating policy gradients. The result should reach positive rewards in $500$K steps.
 \begin{lstlisting}[language=bash,breaklines=true]
@@ -273,14 +279,18 @@ In this section, you need to implement the REINFORCE policy gradient estimator i
   python cas4160/scripts/run_hw4.py -cfg experiments/sac/halfcheetah_reinforce10.yaml
 \end{lstlisting}
 
-\textbf{Answer:} 
+\textbf{Answer:}
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{assets/black.jpg}
-    \caption{\textbf{\color{red}Replace this with your plot, and add the caption.}}
+    \includegraphics[width=0.7\textwidth]{assets/halfcheetah_reinforce_compare.png}
+    \caption{Eval average return on HalfCheetah-v4 comparing REINFORCE-1 (1 actor sample) vs REINFORCE-10 (10 actor samples) over 1M environment steps.}
 \end{figure}
 
-    {\textbf{\color{red}Add your explanation.}}
+    \begin{itemize}
+        \item \textbf{REINFORCE-1} barely learns: peak return $\approx 122$, ends near $-38$. With only 1 sample per state, the policy gradient is extremely noisy and provides almost no reliable learning signal.
+        \item \textbf{REINFORCE-10} learns much more effectively: reaches $\approx 2200$ peak return and $\approx 1594$ at the end. Using 10 samples averages out noise, giving a lower-variance gradient estimate.
+        \item This demonstrates the core problem with REINFORCE — its variance scales inversely with the number of samples. In high-dimensional environments like HalfCheetah, single-sample REINFORCE is insufficient for reliable learning.
+    \end{itemize}
 
 \end{itemize}
 
@@ -315,6 +325,15 @@ This gradient estimator often provides a much lower variance, so it can be used 
   python cas4160/scripts/run_hw4.py -cfg experiments/sac/sanity_invertedpendulum_reparametrize.yaml
 \end{lstlisting}
 
+    \textbf{Answer:}
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.7\textwidth]{assets/invpendulum_reparametrize.png}
+        \caption{Eval average return on InvertedPendulum-v4 using REPARAMETRIZE over 300K environment steps.}
+    \end{figure}
+
+    The REPARAMETRIZE agent also successfully solves InvertedPendulum-v4, reaching 1000 reward starting around step 50K. Compared to REINFORCE, it is \textbf{more stable} — the returns stay near 1000 for longer stretches with fewer catastrophic drops. This reflects the lower variance of the reparametrized gradient estimator.
+
     \item Train (once again) on \verb|HalfCheetah-v4| with \verb|halfcheetah_reparametrize.yaml|. Plot results for \textbf{all three gradient estimators} (REINFORCE-1, REINFORCE-10, and REPARAMETRIZE) on the same set of axes, with number of environment steps on the $x$-axis and evaluation return on the $y$-axis.
 \begin{lstlisting}[language=bash,breaklines=true]
   python cas4160/scripts/run_hw4.py -cfg experiments/sac/halfcheetah_reparametrize.yaml
@@ -323,11 +342,16 @@ This gradient estimator often provides a much lower variance, so it can be used 
     \textbf{Answer:}
     \begin{figure}[H]
         \centering
-        \includegraphics[width=0.7\textwidth]{assets/black.jpg}
-        \caption{\textbf{\color{red}Replace this with your plot, and add the caption.}}
+        \includegraphics[width=0.7\textwidth]{assets/halfcheetah_all_methods.png}
+        \caption{Eval average return on HalfCheetah-v4 comparing REINFORCE-1, REINFORCE-10, and REPARAMETRIZE over 1M environment steps.}
     \end{figure}
 
-    {\textbf{\color{red}Add your explanation.}}
+    \begin{itemize}
+        \item \textbf{REPARAMETRIZE} is by far the best: reaches $\approx 7163$ peak return (final $\approx 7003$). The pathwise gradient through the Q-function gives a strong, low-variance learning signal with just 1 sample.
+        \item \textbf{REINFORCE-10} is a distant second at $\approx 2200$ peak. More samples help REINFORCE, but it cannot match the reparametrized gradient because REINFORCE still relies on log-probability weighting (high variance) rather than direct gradient flow through $Q$.
+        \item \textbf{REINFORCE-1} barely learns ($\approx 122$ peak), confirming that single-sample REINFORCE is ineffective in this environment.
+        \item The key insight: REPARAMETRIZE computes $\nabla_\theta Q(\rvs, \mu_\theta + \sigma_\theta\epsilon)$ directly, which uses the Q-function's gradient and is much lower variance than log-prob weighting. This makes it the preferred method for continuous control.
+    \end{itemize}
     
     \item \textbf{(Optional)} Train an agent for the \verb|Humanoid-v4| environment with \verb|humanoid.yaml| and plot results.
 \begin{lstlisting}[language=bash,breaklines=true]
@@ -370,16 +394,26 @@ As in DQN, the target $Q$ with a single critic exhibits \textit{overestimation b
   python cas4160/scripts/run_hw4.py -cfg experiments/sac/hopper_clipq.yaml --seed 48
 \end{lstlisting}
 
-    \textbf{Which one works the best? \textcolor{red}{Your answer.}}
-    
+    \textbf{Which one works the best? Double-Q works best in this experiment.}
+
     \textbf{Answer:}
     \begin{figure}[H]
         \centering
-        \includegraphics[width=0.6\textwidth]{assets/black.jpg}
-        \caption{\textbf{\color{red}Replace this with your plots (eval return and Q-values), and add the caption.}}
+        \includegraphics[width=0.7\textwidth]{assets/hopper_eval_return.png}
+        \caption{Eval average return on Hopper-v4 comparing Single-Q, Double-Q, and Clipped Double-Q over 100K environment steps (seed 48).}
+    \end{figure}
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=0.7\textwidth]{assets/hopper_q_values.png}
+        \caption{Q-values on Hopper-v4 comparing Single-Q, Double-Q, and Clipped Double-Q over 100K environment steps (seed 48).}
     \end{figure}
 
-    {\textbf{\color{red}Add your explanation.}}
+    \begin{itemize}
+        \item \textbf{Double-Q} achieves the best and most stable performance: final return $\approx 529$, stays high after converging. Its Q-values ($\approx 222$ peak) are slightly higher than Single-Q, suggesting mild overestimation is still present but manageable.
+        \item \textbf{Single-Q} reaches a similar peak ($\approx 541$) but is less stable, dropping to $\approx 336$ by the end. Its Q-values are moderate ($\approx 207$). Without any correction, Q-values can be overestimated and the policy may degrade as a result.
+        \item \textbf{Clipped Double-Q} is the most conservative: lower peak return ($\approx 386$) and the lowest Q-values ($\approx 161$). Taking the \emph{minimum} of two critics aggressively suppresses overestimation, but this can cause \emph{under}-estimation, which reduces the policy's target signal and slows learning.
+        \item \textbf{Relation to overestimation bias}: Single-Q suffers from overestimation (critic is too optimistic), leading to unstable training. Double-Q reduces this by cross-targeting the two critics. Clipped Double-Q corrects most aggressively but at the cost of underestimation. In this short 100K-step run, Double-Q strikes the best balance.
+    \end{itemize}
 
     \item \textbf{(Optional)} Pick the best configuration among single-Q, double-Q, and clipped double-Q, and run it on \verb|Humanoid-v4| using \verb|humanoid.yaml| (\textbf{edit the config} to use the best option). Plot the default configuration (in the previous section) and the best configuration together with environment steps on the $x$-axis and evaluation return on the $y$-axis.
     
@@ -412,8 +446,8 @@ Please submit the code and the report in a single zip file, \texttt{hw4\_[YourSt
     fit=band,
     before computing xy={l=15pt},
   }
-[hw4\_\textcolor{red}{[YourStudentID]}.zip
-  [hw4\_\textcolor{red}{[YourStudentID]}.pdf]
+[hw4\_23125038.zip
+  [hw4\_23125038.pdf]
   [cas4160
     [agents
         [sac\_agent.py]
